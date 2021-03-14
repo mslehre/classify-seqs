@@ -14,6 +14,7 @@
    2. Like 1., but the positive model is 3-periodic.
    3. Two $k$-th order Markov chains, one for coding, one for non-coding. Then logistic regression to predict a probability of coding. Trained (discriminately) to miminize cross-entropy error (CEE).
    4. Like 3, but the positive model is 3-periodic.
-   
+   5. Like 4, but $M>2$ models are allowed and $M$ is optimized.
+   6. $M$ HMMs with a fixed number of states ($n=3$) are trained jointly with logistic regression.
    
 ## Compare the Accuracy of above Models on the Test Data
