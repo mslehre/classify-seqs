@@ -71,21 +71,15 @@ class HMMCell(Layer):
         print ("old_forward=\n", old_forward, " shape", old_forward.shape)
         print ("old_loglik=", old_loglik)
 
-    # convert parameter matrices to stochastic matrices for transition (A) and emission probs (B)
-    # TODO: this could be more efficient, maybe using tensorflow.python.keras.constraints?
-    I = tf.nn.softmax(self.init_kernel, axis=-1, name="I")
-    A = tf.nn.softmax(self.transition_kernel, axis=-1, name="A")
-    B = tf.nn.softmax(self.emission_kernel, axis=-1, name="B")
-
     I0 = tf.dtypes.cast(old_is_init, tf.float32)
-    R0 = tf.tensordot(I0, I, axes=0)
-    R1 = tf.linalg.matvec(A, old_forward, transpose_a=True)
+    R0 = tf.tensordot(I0, self.I, axes=0)
+    R1 = tf.linalg.matvec(self.A, old_forward, transpose_a=True)
     R = R0 + R1
     R = tf.identity(R, name="R")
     if verbose:
         print (f"R0:{R0}\nR1:{R1}\nR:{R}")
     
-    E = tf.linalg.matvec(B, inputs, transpose_a=False, name="E")
+    E = tf.linalg.matvec(self.B, inputs, transpose_a=False, name="E")
     forward = tf.multiply(E, R, name="forward")
     loglik = tf.reduce_sum(forward, axis=-1, name="loglik")
     is_init = tf.zeros(batch_size, dtype='int8', name="is_init")
@@ -118,33 +112,21 @@ class HMMCell(Layer):
     return dict(list(base_config.items()) + list(config.items()))
 
 
-  def call_old(self, inputs, states, training=None):
-    prev_output = states[0] if nest.is_nested(states) else states
-    # convert parameter matrices to stochastic matrices for transition (A) and emission probs (B)
+
+    # convert parameter matrices to stochastic matrices
     # TODO: this could be more efficient, maybe using tensorflow.python.keras.constraints?
-    I = tf.nn.softmax(self.init_kernel, axis=-1, name="I")
-    A = tf.nn.softmax(self.transition_kernel, axis=-1, name="A")
-    B = tf.nn.softmax(self.emission_kernel, axis=-1, name="B")
-    print ("I=\n", I, "\nA=\n", A, "\nB=\n", B)
-    print ("prev_output=\n", prev_output, " shape", prev_output.shape)
-    
-    R0 = prev_output[0,0] * I # only in first time step
-    print (f"R0:{R0}")
-    R1 = tf.linalg.matvec(A, prev_output[0,1:], transpose_a=True)
-    print (f"R1:{R1}")
-    R = R0+R1
-    print (f"R:{R}")
-    E = tf.linalg.matvec(B, inputs, transpose_a=False, name="E")
-    output = tf.multiply(E, R)
-    print (f"output:{output}")
-    output = [tf.concat([np.array([0.], dtype=np.float32), output[0]], axis=0)]
-    new_state = [output] if nest.is_nested(states) else output
-    return output, new_state
 
-  def get_initial_state_old(self, inputs=None, batch_size=None, dtype=None):
-    """ initially the HMM starts in state 0 """
-    I = np.zeros(self.n+1, dtype=np.float32)
-    I[0] = 1.0
-    I = np.tile(I, (batch_size,1))
-    return I
+  @property
+  def A(self):
+      transition_matrix = tf.nn.softmax(self.transition_kernel, axis=-1, name="A")
+      return transition_matrix
 
+  @property
+  def B(self):
+      emission_matrix = tf.nn.softmax(self.emission_kernel, axis=-1, name="B")
+      return emission_matrix
+
+  @property
+  def I(self):
+      initial_distribution = tf.nn.softmax(self.init_kernel, axis=-1, name="I")
+      return initial_distribution
