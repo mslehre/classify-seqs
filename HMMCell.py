@@ -42,8 +42,8 @@ class HMMCell(Layer):
     self.transition_initializer = initializers.get(transition_initializer)
     self.emission_initializer = initializers.get(emission_initializer)
     self.init_initializer = initializers.get(init_initializer)
-    self.state_size = self.n + 1
-    self.output_size = self.n + 1
+    self.state_size = [1, self.n, 1]
+    self.output_size = self.n
 
   def build(self, input_shape):
     self.emission_kernel = self.add_weight(
@@ -57,11 +57,68 @@ class HMMCell(Layer):
     self.init_kernel = self.add_weight(
         shape=(self.n),
         initializer=self.init_initializer,
-        name='init_kernel') # closely related to initial distribution of 0-th hidden state
+        name='init_kernel') # closely related to initial distribution of first hidden state
     
     self.built = True
 
   def call(self, inputs, states, training=None):
+    verbose = False
+    old_is_init, old_forward, old_loglik = states
+    batch_size = old_forward.shape[0]
+    if verbose:
+        print ("batch_size=", batch_size)
+        print ("old_is_init=", old_is_init)
+        print ("old_forward=\n", old_forward, " shape", old_forward.shape)
+        print ("old_loglik=", old_loglik)
+
+    # convert parameter matrices to stochastic matrices for transition (A) and emission probs (B)
+    # TODO: this could be more efficient, maybe using tensorflow.python.keras.constraints?
+    I = tf.nn.softmax(self.init_kernel, axis=-1, name="I")
+    A = tf.nn.softmax(self.transition_kernel, axis=-1, name="A")
+    B = tf.nn.softmax(self.emission_kernel, axis=-1, name="B")
+
+    I0 = tf.dtypes.cast(old_is_init, tf.float32)
+    R0 = tf.tensordot(I0, I, axes=0)
+    R1 = tf.linalg.matvec(A, old_forward, transpose_a=True)
+    R = R0 + R1
+    R = tf.identity(R, name="R")
+    if verbose:
+        print (f"R0:{R0}\nR1:{R1}\nR:{R}")
+    
+    E = tf.linalg.matvec(B, inputs, transpose_a=False, name="E")
+    forward = tf.multiply(E, R, name="forward")
+    loglik = tf.reduce_sum(forward, axis=-1, name="loglik")
+    is_init = tf.zeros(batch_size, dtype='int8', name="is_init")
+    new_state = [is_init, forward, loglik]
+    new_state = [new_state] if nest.is_nested(states) else new_state
+    if verbose:
+        print ("new_state", new_state)
+    return new_state, new_state
+
+  def get_initial_state(self, inputs=None, batch_size=None, dtype=None):
+    """ initially the HMM starts in state 0 """
+    is_init = tf.ones(batch_size, dtype='int8')
+    forward = tf.zeros([batch_size, self.n], dtype=np.float32)
+    loglik = tf.zeros(batch_size)
+    S = [is_init, forward, loglik]
+    return S
+ 
+  def get_config(self):
+    config = {
+        'n': self.units,
+        'transition_initializer':
+            initializers.serialize(self.transition_initializer),
+        'emission_initializer':
+            initializers.serialize(self.emission_initializer),
+         'init_initializer':
+            initializers.serialize(self.init_initializer),
+    }
+    config.update(_config_for_enable_caching_device(self))
+    base_config = super().get_config()
+    return dict(list(base_config.items()) + list(config.items()))
+
+
+  def call_old(self, inputs, states, training=None):
     prev_output = states[0] if nest.is_nested(states) else states
     # convert parameter matrices to stochastic matrices for transition (A) and emission probs (B)
     # TODO: this could be more efficient, maybe using tensorflow.python.keras.constraints?
@@ -84,23 +141,10 @@ class HMMCell(Layer):
     new_state = [output] if nest.is_nested(states) else output
     return output, new_state
 
-  def get_initial_state(self, inputs=None, batch_size=None, dtype=None):
+  def get_initial_state_old(self, inputs=None, batch_size=None, dtype=None):
     """ initially the HMM starts in state 0 """
     I = np.zeros(self.n+1, dtype=np.float32)
     I[0] = 1.0
     I = np.tile(I, (batch_size,1))
     return I
 
-  def get_config(self):
-    config = {
-        'n': self.units,
-        'transition_initializer':
-            initializers.serialize(self.transition_initializer),
-        'emission_initializer':
-            initializers.serialize(self.emission_initializer),
-         'init_initializer':
-            initializers.serialize(self.init_initializer),
-    }
-    config.update(_config_for_enable_caching_device(self))
-    base_config = super().get_config()
-    return dict(list(base_config.items()) + list(config.items()))
