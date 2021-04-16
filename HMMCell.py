@@ -32,12 +32,14 @@ class HMMCell(Layer):
   """
 
   def __init__(self,
-               n, # number of HMM hidden states, output size
+               units, # number of HMMs
+               n, # number of HMM hidden states
                transition_initializer='random_uniform',
                emission_initializer='random_uniform',
-               init_initializer='constant', # = uniformly on set of states
+               init_initializer='random_uniform',
                **kwargs):
     super().__init__(**kwargs)
+    self.units = units
     self.n = n # number of HMM hidden states
     self.transition_initializer = initializers.get(transition_initializer)
     self.emission_initializer = initializers.get(emission_initializer)
@@ -46,19 +48,19 @@ class HMMCell(Layer):
     self.output_size = self.n
 
   def build(self, input_shape):
+    s = input_shape[-1] # emission alphabet size
     self.emission_kernel = self.add_weight(
-        shape=(self.n, input_shape[-1]),
+        shape=(self.units, self.n, s),
         initializer=self.emission_initializer,
         name='emission_kernel') # closely related to B
     self.transition_kernel = self.add_weight(
-        shape=(self.n, self.n),
+        shape=(self.units, self.n, self.n),
         initializer=self.transition_initializer,
         name='transition_kernel') # closely related to A
     self.init_kernel = self.add_weight(
-        shape=(self.n),
+        shape=(self.units, self.n),
         initializer=self.init_initializer,
         name='init_kernel') # closely related to initial distribution of first hidden state
-    
     self.built = True
 
   def call(self, inputs, states, training=None):
@@ -78,8 +80,10 @@ class HMMCell(Layer):
     R = tf.identity(R, name="R")
     if verbose:
         print (f"R0:{R0}\nR1:{R1}\nR:{R}")
-    
-    E = tf.linalg.matvec(self.B, inputs, transpose_a=False, name="E")
+    #   [units, n, s]     [batch_size, s]
+    # E has shape [batch_size, units, n]
+    E = tf.linalg.matvec(tf.expand_dims(self.B, 0),
+                         tf.expand_dims(inputs, 1), name="E")
     forward = tf.multiply(E, R, name="forward")
     S = tf.reduce_sum(forward, axis=-1, name="loglik")
     loglik = old_loglik + tf.math.log(S)
@@ -94,8 +98,8 @@ class HMMCell(Layer):
   def get_initial_state(self, inputs=None, batch_size=None, dtype=None):
     """ initially the HMM starts in state 0 """
     is_init = tf.ones(batch_size, dtype='int8')
-    forward = tf.zeros([batch_size, self.n], dtype=np.float32)
-    loglik = tf.zeros(batch_size)
+    forward = tf.zeros([batch_size, self.units, self.n], dtype=np.float32)
+    loglik = tf.zeros([batch_size, self.units])
     S = [is_init, forward, loglik]
     return S
  
@@ -114,9 +118,8 @@ class HMMCell(Layer):
     return dict(list(base_config.items()) + list(config.items()))
 
 
-
-    # convert parameter matrices to stochastic matrices
-    # TODO: this could be more efficient, maybe using tensorflow.python.keras.constraints?
+  # convert parameter matrices to stochastic matrices
+  # TODO: this could be more efficient, maybe using tensorflow.python.keras.constraints?
 
   @property
   def A(self):
