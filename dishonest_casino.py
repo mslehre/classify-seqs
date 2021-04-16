@@ -15,7 +15,7 @@ s = len(sigma)  # emission alphabet 0,..., 5
 A = np.array([[19., 1], [3, 17]]) / 20.0
 B = np.array([[10.,10,10,10,10,10],[6,6,6,6,6,30]]) / 60.0
 n = 2 # number of states
-T = 12 # sequence length
+T = 30 # sequence length
 
 def casino_generator():
     y = np.zeros((T, s), dtype=np.float32)

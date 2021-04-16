@@ -81,7 +81,9 @@ class HMMCell(Layer):
     
     E = tf.linalg.matvec(self.B, inputs, transpose_a=False, name="E")
     forward = tf.multiply(E, R, name="forward")
-    loglik = tf.reduce_sum(forward, axis=-1, name="loglik")
+    S = tf.reduce_sum(forward, axis=-1, name="loglik")
+    loglik = old_loglik + tf.math.log(S)
+    forward = forward / tf.expand_dims(S, -1)
     is_init = tf.zeros(batch_size, dtype='int8', name="is_init")
     new_state = [is_init, forward, loglik]
     new_state = [new_state] if nest.is_nested(states) else new_state
