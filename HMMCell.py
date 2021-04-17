@@ -93,7 +93,7 @@ class HMMCell(Layer):
     new_state = [new_state] if nest.is_nested(states) else new_state
     if verbose:
         print ("new_state", new_state)
-    return new_state, new_state
+    return loglik, new_state
 
   def get_initial_state(self, inputs=None, batch_size=None, dtype=None):
     """ initially the HMM starts in state 0 """
