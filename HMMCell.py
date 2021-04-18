@@ -165,6 +165,9 @@ class HMMLayer(Layer):
     if (seqlen is not None and seqlen > 0):
         loglik = loglik / seqlen
     loglik += tf.math.log(tf.cast(self.C.s, tf.float32))
+    if seqlen is not None:
+        transhom = 1.0 - tf.reduce_sum(tf.math.square(self.C.A)) / (self.n * self.units)
+        self.add_loss(0.1 * transhom)
     return loglik
 
   def get_config(self):
