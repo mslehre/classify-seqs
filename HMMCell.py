@@ -48,9 +48,9 @@ class HMMCell(Layer):
     self.output_size = self.n
 
   def build(self, input_shape):
-    s = input_shape[-1] # emission alphabet size
+    self.s = input_shape[-1] # emission alphabet size
     self.emission_kernel = self.add_weight(
-        shape=(self.units, self.n, s),
+        shape=(self.units, self.n, self.s),
         initializer=self.emission_initializer,
         name='emission_kernel') # closely related to B
     self.transition_kernel = self.add_weight(
@@ -88,6 +88,7 @@ class HMMCell(Layer):
     S = tf.reduce_sum(forward, axis=-1, name="loglik")
     loglik = old_loglik + tf.math.log(S)
     forward = forward / tf.expand_dims(S, -1)
+    batch_size = tf.shape(inputs)[0] # 'call' can be given None as batch size
     is_init = tf.zeros(batch_size, dtype='int8', name="is_init")
     new_state = [is_init, forward, loglik]
     new_state = [new_state] if nest.is_nested(states) else new_state
@@ -105,19 +106,19 @@ class HMMCell(Layer):
  
   def get_config(self):
     config = {
-        'n': self.units,
+        'units': self.units,
+        'n': self.n,
+        'alphabet_size': self.s,
         'transition_initializer':
             initializers.serialize(self.transition_initializer),
         'emission_initializer':
             initializers.serialize(self.emission_initializer),
-         'init_initializer':
-            initializers.serialize(self.init_initializer),
+        'init_initializer':
+            initializers.serialize(self.init_initializer)
     }
-    config.update(_config_for_enable_caching_device(self))
+    # config.update(_config_for_enable_caching_device(self))
     base_config = super().get_config()
     return dict(list(base_config.items()) + list(config.items()))
-
-
   # convert parameter matrices to stochastic matrices
   # TODO: this could be more efficient, maybe using tensorflow.python.keras.constraints?
 
@@ -135,3 +136,41 @@ class HMMCell(Layer):
   def I(self):
       initial_distribution = tf.nn.softmax(self.init_kernel, axis=-1, name="I")
       return initial_distribution
+
+  def print_pars(self):
+    with np.printoptions(precision=5, suppress=True, linewidth=100):
+        print("transition matrices A:\n", self.A.numpy())
+        print("emission matrices B:\n", self.B.numpy())
+        print("initial distributions I:\n", self.I.numpy())
+
+
+
+
+
+class HMMLayer(Layer):
+  def __init__(self, num_hmms, num_hidden_states):
+    super(HMMLayer, self).__init__()
+    self.units = num_hmms
+    self.n = num_hidden_states
+
+  def build(self, input_shape):
+    self.C = HMMCell(self.units, self.n)
+    self.C.build(input_shape)
+    self.F = tf.keras.layers.RNN(self.C, return_state = True)
+    # self.add_weight(self.C.get_weights())
+    
+  def call(self, input):
+    alpha, _, lastcol, loglik = self.F(input)
+    seqlen = input.shape[-2]
+    if (seqlen is not None and seqlen > 0):
+        loglik = loglik / seqlen
+    loglik += tf.math.log(tf.cast(self.C.s, tf.float32))
+    return loglik
+
+  def get_config(self):
+    config = {
+        'units': self.units,
+        'n': self.n
+    }
+    base_config = super().get_config()
+    return dict(list(base_config.items()) + list(config.items()))
