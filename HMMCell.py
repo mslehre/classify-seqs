@@ -6,6 +6,28 @@ from tensorflow.python.framework import ops, tensor_shape
 from tensorflow.python.ops import array_ops
 from tensorflow.python.util import nest
 
+class TransitionMatrixChainInitializer(tf.keras.initializers.Initializer):
+  def __init__(self, succScore=1.0):
+    self.succScore = succScore
+
+  def __call__(self, shape, dtype=None, **kwargs):
+    if len(shape)<2 or shape[-2] != shape[-1]:
+        raise ValueError('Last two dimensions of TransitionMatrixChainInitializer'
+                         'must specify a square matrix.')
+    if len(shape) != 3:
+        # TODO remove this requirement later
+        raise ValueError('TransitionMatrixChainInitializer requires 3 dims')
+    n = shape[-1]
+    u = shape[-3]
+
+    # a tridiagonal band (per unit).
+    diagonals = self.succScore * np.ones((u, 3, n), dtype=np.float32)
+    A = tf.linalg.diag(diagonals, k = (-1, 1))
+    return A
+
+  def get_config(self):  # To support serialization
+    return {"succScore": self.succScore}
+
 class HMMCell(Layer):
   """Cell class for a HMM as a RNN.
   This class processes one step within the whole time sequence input.
@@ -140,8 +162,8 @@ class HMMCell(Layer):
   def print_pars(self):
     with np.printoptions(precision=5, suppress=True, linewidth=100):
         print("transition matrices A:\n", self.A.numpy())
-        print("emission matrices B:\n", self.B.numpy())
-        print("initial distributions I:\n", self.I.numpy())
+        # print("emission matrices B:\n", self.B.numpy())
+        # print("initial distributions I:\n", self.I.numpy())
 
 
 
@@ -154,7 +176,8 @@ class HMMLayer(Layer):
     self.n = num_hidden_states
 
   def build(self, input_shape):
-    self.C = HMMCell(self.units, self.n)
+    self.C = HMMCell(self.units, self.n,
+                     transition_initializer=TransitionMatrixChainInitializer(3.))
     self.C.build(input_shape)
     self.F = tf.keras.layers.RNN(self.C, return_state = True)
     # self.add_weight(self.C.get_weights())
@@ -166,6 +189,7 @@ class HMMLayer(Layer):
         loglik = loglik / seqlen
     loglik += tf.math.log(tf.cast(self.C.s, tf.float32))
     if seqlen is not None:
+        # this loss improves predictions when starting with a uniform, full transition matrix
         transhom = 1.0 - tf.reduce_sum(tf.math.square(self.C.A)) / (self.n * self.units)
         self.add_loss(0.1 * transhom)
     return loglik
