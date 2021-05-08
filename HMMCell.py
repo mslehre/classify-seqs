@@ -170,29 +170,42 @@ class HMMCell(Layer):
 
 
 class HMMLayer(Layer):
-  def __init__(self, num_hmms, num_hidden_states):
+  def __init__(self, num_hmms, num_hidden_states, posteriorFinalStateProbs=True):
     super(HMMLayer, self).__init__()
     self.units = num_hmms
     self.n = num_hidden_states
+    self.posteriorFinalStateProbs = posteriorFinalStateProbs
 
   def build(self, input_shape):
+    emi_ini = tf.keras.initializers.RandomUniform(minval=0, maxval=0.1)
     self.C = HMMCell(self.units, self.n,
+                     emission_initializer=emi_ini,
                      transition_initializer=TransitionMatrixChainInitializer(3.))
     self.C.build(input_shape)
     self.F = tf.keras.layers.RNN(self.C, return_state = True)
-    # self.add_weight(self.C.get_weights())
     
   def call(self, input):
     alpha, _, lastcol, loglik = self.F(input)
     seqlen = input.shape[-2]
     if (seqlen is not None and seqlen > 0):
+        # normalize to make comparable between lengths
         loglik = loglik / seqlen
+    # standardize to make roughly comparable between alphabet sizes
     loglik += tf.math.log(tf.cast(self.C.s, tf.float32))
     if seqlen is not None:
-        # this loss improves predictions when starting with a uniform, full transition matrix
+    #    # this loss improves predictions when starting with a uniform, full transition matrix
         transhom = 1.0 - tf.reduce_sum(tf.math.square(self.C.A)) / (self.n * self.units)
         self.add_loss(0.1 * transhom)
-    return loglik
+
+    output = loglik
+    if self.posteriorFinalStateProbs:
+        shape = lastcol.shape
+        batch_size = lastcol.shape[0]
+        newshape = shape[0:-1]
+        posteriorFinalStateProbs = tf.reshape(lastcol, [-1, self.units * self.n])
+        output = tf.concat([loglik, posteriorFinalStateProbs], axis=-1)
+
+    return output
 
   def get_config(self):
     config = {
