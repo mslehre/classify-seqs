@@ -1,2 +1,12 @@
+DNA:
+
 These files were constructed in working dir ~/Dropbox/data/vertebrate.
 These are the training, validation and test DNA sequences of human CDS that were used in the ClaMSA paper.
+
+German sentences:
+See ~/Dropbox/data/deu
+
+Download from
+https://wortschatz.uni-leipzig.de/de/download/German#deu_news_2020
+corpus
+news 2020 30K sentences.
