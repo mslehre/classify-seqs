@@ -107,7 +107,7 @@ def get_model(bidirectional = False, seqModelType = "SimpleRNN", RNNunits = 32):
     model.add(layers.InputLayer(input_shape=(None,s)))
 
     if seqModelType == "HMM":
-        seqLayer = HMMLayer(10, 15) # (10,15) is better than (5,11)
+        seqLayer = HMMLayer(5, 15) # (10,15) is better than (5,11)
     elif seqModelType == "LSTM":
         seqLayer = layers.LSTM(RNNunits)
     elif seqModelType == "GRU":
@@ -175,8 +175,8 @@ def adhoc_acc(x_test, y_test):
 from time import time
 
 # ts = np.array(range(ell - 15, -1, -10))
-#ts = np.array(range(ell - 15, 20, -20))
-ts = np.array([50])
+ts = np.array(range(ell - 15, -1, -10))
+#ts = np.array([50])
 
 len(ts)
 
@@ -184,9 +184,9 @@ len(ts)
 # In[14]:
 
 
-num_reps = 3 # 30
-num_epochs = 40 # 100
-modelnames = ["HMM", "SimpleRNN"] #, "SimpleRNN", "LSTM", "GRU"] #, "ad hoc"
+num_reps = 20 # 30
+num_epochs = 40 # 40
+modelnames = ["HMM", "SimpleRNN", "LSTM", "GRU"] #, "SimpleRNN", "LSTM", "GRU"] #, "ad hoc"
 directions = [False] # , True] # bidirectional?
 test_accs = { (name, direction) : np.empty((len(ts), num_reps)) for name in modelnames for direction in directions}
 
@@ -234,7 +234,7 @@ for modelname in modelnames:
 
 
 #  single plot
-somemodelnames = ["HMM", "SimpleRNN"] #, "LSTM", "GRU", "ad hoc"]
+somemodelnames = ["HMM", "SimpleRNN", "LSTM", "GRU"] #, "ad hoc"]
 fig, ax = plt.subplots(1,2, figsize=(14, 5))
 for j, direction in enumerate(directions):
     for i, model in enumerate(somemodelnames):
